@@ -143,6 +143,40 @@ app.post('/appointments/book', authMiddleware, roleMiddleware('student'), async 
     res.status(400).json({ error: 'Error booking appointment' });
   }
 });
+// Cancel Appointment
+app.delete('/appointments/cancel', authMiddleware, roleMiddleware('professor'), async (req, res) => {
+  try {
+    const { appointmentId } = req.body;
+
+    // Validate appointment ID
+    const appointment = await Appointment.findById(appointmentId);
+    if (!appointment) {
+      return res.status(404).json({ error: 'Appointment not found' });
+    }
+
+    // Ensure the professor is canceling their own appointment
+    if (appointment.professorId.toString() !== req.user.userId) {
+      return res.status(403).json({ error: 'Access denied. You can only cancel your own appointments.' });
+    }
+
+    // Remove the appointment
+    await Appointment.findByIdAndDelete(appointmentId);
+
+    // Restore the slot to the professor's availability
+    const availability = await ProfessorAvailability.findOne({ professorId: req.user.userId });
+    if (availability) {
+      availability.availableSlots.push(appointment.slot);
+      availability.availableSlots = availability.availableSlots.sort(); // Sort slots after adding
+      await availability.save();
+    }
+
+    res.status(200).json({ message: 'Appointment canceled successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Error canceling appointment' });
+  }
+});
+
 
 // Start Server
 const PORT = process.env.PORT || 8080;
